@@ -142,6 +142,15 @@ const uint32_t ul_pull_up_enable)
 	_pio_pull_up(p_pio,ul_mask,ul_pull_up_enable);
 	
 }
+
+uint32_t _pio_get(Pio *p_pio, const pio_type_t ul_type,
+const uint32_t ul_mask)
+{
+	if (ul_type == PIO_INPUT){
+		return  ((p_pio->PIO_PDSR)&ul_mask)!=0;
+	}
+	return ((p_pio->PIO_ODSR)&ul_mask)!=0;
+}
 void init(void) {
   // Initialize the board clock
   sysclk_init();
@@ -172,7 +181,7 @@ int main(void) {
 
 	
     for (int i = 0; i < 3; i++) {
-	    if (!pio_get(buttons_pio[i], PIO_INPUT, buttons_pio_mask[i])) {
+	    if (!_pio_get(buttons_pio[i], PIO_INPUT, buttons_pio_mask[i])) {
 		    leds_state[i] = !leds_state[i];
 
 		    } else {
