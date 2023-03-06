@@ -57,9 +57,9 @@
 
 #if defined(USE_FONT_BPMONO_10x16)
 /** Width of each glyph, including spacer column. */
-#  define SYSFONT_WIDTH           10
+#  define SYSFONT_WIDTH           5
 /** Height of each glyph, excluding spacer line. */
-#  define SYSFONT_HEIGHT          16
+#  define SYSFONT_HEIGHT          8
 /** Line height. */
 #  define SYSFONT_LINESPACING     8
 /** First character defined. */

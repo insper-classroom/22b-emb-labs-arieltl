@@ -76,7 +76,7 @@ void but_callback(void)
 
 // pisca led N vez no periodo T
 void pisca_led(int n, int t){
-  for (int i=0;i<n;i++){
+
     pio_clear(LED_PIO, LED_IDX_MASK);
     delay_ms(t);
     pio_set(LED_PIO, LED_IDX_MASK);

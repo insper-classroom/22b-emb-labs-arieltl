@@ -38,7 +38,7 @@
 #define LED2_PIO_ID ID_PIOC // ID do periférico PIOC (controla LED)
 #define LED2_PIO_IDX 30     // ID do LED no PIO
 #define LED2_PIO_IDX_MASK (1 << LED2_PIO_IDX)
-
+222444-
 #define BUT1_PIO PIOD
 #define BUT1_PIO_ID ID_PIOD
 #define BUT1_PIO_IDX 28
@@ -146,6 +146,12 @@ void _delay_ms(int ms) {
         asm("nop");
 }
 
+volatile int but1pressed =1;
+
+void but1_callback(){
+	but1pressed = !but1pressed;
+}
+
 void init(void) {
     // Initialize the board clock
     sysclk_init();
@@ -159,7 +165,22 @@ void init(void) {
         _pio_set_input(buttons_pio[i], buttons_pio_mask[i], _PIO_PULLUP | _PIO_DEBOUNCE);
         //_pio_pull_up(buttons_pio[i],buttons_pio_mask[i],1);
         pio_set_debounce_filter(buttons_pio[i], buttons_pio_mask[i], 10);
+		 
+		 // Ativa interrupção e limpa primeira IRQ gerada na ativacao
+		 pio_enable_interrupt(BUT_PIO, BUT_IDX_MASK);
+		 pio_get_interrupt_status(BUT_PIO);
+		 
+		 // Configura NVIC para receber interrupcoes do PIO do botao
+		 // com prioridade 4 (quanto mais próximo de 0 maior)
+		 NVIC_EnableIRQ(BUT_PIO_ID);
+		 NVIC_SetPriority(BUT_PIO_ID, 4); // Prioridade 4
     }
+	pio_handler_set(BUT1_PIO,
+	BUT1_PIO_ID,
+	BUT1_IDX_MASK,
+	PIO_IT_EDGE,
+	but1_callback);
+
 }
 
 /************************************************************************/
