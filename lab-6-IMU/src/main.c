@@ -26,6 +26,11 @@
 #define LED1_PIO_ID ID_PIOA
 #define LED1_PIO_IDX 0
 #define LED1_PIO_IDX_MASK (1 << LED1_PIO_IDX)
+
+#define LED_PIO PIOC
+#define LED_PIO_ID ID_PIOC
+#define LED_PIO_IDX 8
+#define LED_PIO_IDX_MASK (1 << LED_PIO_IDX)
 /** RTOS  */
 #define TASK_OLED_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
 #define TASK_OLED_STACK_PRIORITY            (tskIDLE_PRIORITY)
@@ -46,6 +51,9 @@ int8_t mcu6050_i2c_bus_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *reg_dat
 void but_callback(void);
 static void io_init(void);
 
+QueueHandle_t xQueueOrientation;
+
+
 /************************************************************************/
 /* RTOS application funcs                                               */
 /************************************************************************/
@@ -64,7 +72,7 @@ extern void vApplicationMallocFailedHook(void) {
 }
 
 SemaphoreHandle_t xSemaphoreFall;
-typedef enum {Frente, Direita, Esquerda};
+typedef enum {Frente, Direita, Esquerda,Cima} orientation;
 /************************************************************************/
 /* handlers / callbacks                                                 */
 /************************************************************************/
@@ -120,6 +128,30 @@ void but_callback(void) {
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
+static void task_orientation(void *pvParameters) {
+	orientation imuOrientation;
+	
+	for(;;){
+		
+				 	
+	
+		 if (xQueueReceive(xQueueOrientation, &imuOrientation, (TickType_t)0)) {
+					pio_set(LED1_PIO,LED1_PIO_IDX_MASK);
+					pio_set(LED2_PIO,LED2_PIO_IDX_MASK);
+					pio_set(LED3_PIO,LED3_PIO_IDX_MASK);
+			 	if ( imuOrientation==Esquerda){
+
+				 	pio_clear(LED1_PIO,LED1_PIO_IDX_MASK);
+				 	
+				} else if (imuOrientation == Direita) {
+				 	pio_clear(LED3_PIO,LED3_PIO_IDX_MASK);
+				} else if (imuOrientation==Frente) {
+				 	pio_clear(LED2_PIO,LED2_PIO_IDX_MASK);
+			 	}
+		}
+	}
+
+}
 
 static void task_oled(void *pvParameters) {
 	gfx_mono_ssd1306_init();
@@ -127,7 +159,7 @@ static void task_oled(void *pvParameters) {
 	gfx_mono_draw_string("oii", 0, 20, &sysfont);
 
 	for (;;)  {
-		
+
 
 	}
 }
@@ -246,16 +278,21 @@ static void task_imu(void *pvParameters) {
 		const FusionEuler euler = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
 
 		printf("Roll %0.1f, Pitch %0.1f, Yaw %0.1f\n", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
-		pio_set(LED1_PIO,LED1_PIO_IDX_MASK);
-		pio_set(LED3_PIO,LED3_PIO_IDX_MASK);
-		float roll = euler.angle.roll;
-		if (roll>60.0){
-			pio_clear(LED1_PIO,LED1_PIO_IDX_MASK);
-			printf("acendeu");
+	
+		orientation imuOrientation;
+		if (euler.angle.pitch<-60.0){
+			imuOrientation = Frente;
+			
+		} else if ( euler.angle.roll>60.0){
+			imuOrientation = Esquerda;
 		
+		} else if (euler.angle.roll<-60.0) {
+			imuOrientation = Direita;
+		} else {
+			imuOrientation = Cima;
 		}
 		// uma amostra a cada 1ms
-		vTaskDelay(1);
+		xQueueSend(xQueueOrientation, &imuOrientation, 10);
 	}
 }
 static void task_house_down (void *pvParameters) {
@@ -263,9 +300,9 @@ static void task_house_down (void *pvParameters) {
 	for (;;)  {
 		if (xSemaphoreTake(xSemaphoreFall, 1000) ) {
 			for (int i=0;i<5;i++){
-				pio_clear(LED1_PIO,LED1_PIO_IDX_MASK);
+				pio_clear(LED_PIO,LED_PIO_IDX_MASK);
 				vTaskDelay(50);
-				pio_set(LED1_PIO,LED1_PIO_IDX_MASK);
+				pio_set(LED_PIO,LED_PIO_IDX_MASK);
 				vTaskDelay(50);
 			}
 		}		
@@ -306,7 +343,9 @@ static void io_init(void) {
 	pmc_enable_periph_clk(LED2_PIO_ID);
 	pio_set_output(LED2_PIO,LED2_PIO_IDX_MASK,1,0,0);
 	pmc_enable_periph_clk(LED3_PIO_ID);
-	pio_set_output(LED3_PIO,LED1_PIO_IDX_MASK,1,0,0);
+	pio_set_output(LED3_PIO,LED3_PIO_IDX_MASK,1,0,0);
+	pmc_enable_periph_clk(LED_PIO_ID);
+	pio_set_output(LED_PIO,LED_PIO_IDX_MASK,1,0,0);
 }
 
 /************************************************************************/
@@ -323,6 +362,10 @@ int main(void) {
 	/* Initialize the console uart */
 	configure_console();
 	xSemaphoreFall = xSemaphoreCreateBinary();
+	xQueueOrientation = xQueueCreate(32, sizeof(orientation));
+
+	 if (xQueueOrientation == NULL)
+		printf("falha em criar a queue \n");
 	if (xSemaphoreFall == NULL) printf("Failed to create semaphore\r\n");
 	/* Create task to control oled */
 	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
@@ -333,6 +376,9 @@ int main(void) {
 	}
 	if (xTaskCreate(task_house_down, "fall", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create fall task\r\n");
+	}
+	if (xTaskCreate(task_orientation, "orientation", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create orientation task\r\n");
 	}
 
 	/* Start the scheduler. */
